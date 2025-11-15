@@ -52,14 +52,13 @@ class StateMode(Enum):
     W    = 0b110
     WD   = 0b111
 
-sim = os.getenv("SIM", "icarus")
+sim = os.getenv("SIM", "verilator")
 pdk_root = os.getenv("PDK_ROOT", Path("~/.ciel").expanduser())
 pdk = os.getenv("PDK", "gf180mcuD")
 scl = os.getenv("SCL", "gf180mcu_fd_sc_mcu7t5v0")
 gl = os.getenv("GL", False)
-slot = os.getenv("SLOT", "1x1")
 
-hdl_toplevel = "chip_top"
+hdl_toplevel = "chip_core"
 
 def get_packed_field(handle, start, stop=None):
     full_value = handle.value
@@ -68,12 +67,12 @@ def get_packed_field(handle, start, stop=None):
     else:
         return full_value[start:stop]
 
-def set_packed_field(handle, updates):
+def set_packed_field(handle, start, stop=None, *, value):
     full_value = handle.value
-
-    for key, value in updates.items():
-        full_value[key] = value
-
+    if stop is None:
+        full_value[start] = value
+    else:
+        full_value[start:stop] = value
     handle.value = full_value
 
 @cocotb.test()
@@ -95,24 +94,19 @@ async def test_project(dut):
         tms = tms or 0
         tdi = tdi or 0
 
-        set_packed_field(dut.bidir_PAD, {TCK: 0, TMS: tms, TDI: tdi})
-        await ClockCycles(dut.clk_PAD, 8)
-
-        set_packed_field(dut.bidir_PAD, {TCK: 1})
-        #set_packed_field(dut.bidir_PAD, TDI, TCK, value=1 | (tms << 1) | (tdi << 3))
-        print(dut.bidir_PAD.value[TDO])
-        #tdo = int(dut.bidir_PAD.value[TDO])
-        await ClockCycles(dut.clk_PAD, 8)
-
-        set_packed_field(dut.bidir_PAD, {TCK: 0})
-        #set_packed_field(dut.bidir_PAD, TDI, TCK, value=0 | (tms << 1) | (tdi << 3))
+        set_packed_field(dut.bidir_in, TDI, TCK, value=0 | (tms << 1) | (tdi << 3))
+        await ClockCycles(dut.clk60, 8)
+        set_packed_field(dut.bidir_in, TDI, TCK, value=1 | (tms << 1) | (tdi << 3))
+        tdo = int(dut.bidir_out.value[TDO])
+        await ClockCycles(dut.clk60, 8)
+        set_packed_field(dut.bidir_in, TDI, TCK, value=0 | (tms << 1) | (tdi << 3))
 
         #print(f"tdi={tdi} tdo={tdo}")
-        return 1 #tdo
+        return tdo
 
     async def transfer_jtag_ir(ir: int):
         #print(f"# IR = {ir:3}")
-        set_packed_field(dut.bidir_PAD, {TDI: 0})
+        set_packed_field(dut.bidir_in, TDI, value=0)
         
         #print("# Test-Logic-Reset")
 
@@ -167,7 +161,8 @@ async def test_project(dut):
 
     async def transfer_jtag_dr(dr: int, cycles=8):
         #print(f"# DR = {dr:3}; cycles={cycles}")
-        set_packed_field(dut.bidir_PAD, {TDI: 0})
+
+        set_packed_field(dut.bidir_in, TDI, value=0)
         
         # Test-Logic-Reset -> Run-Test/Idle: TMS = 0
         await jtag_tck(tms=0)
@@ -278,6 +273,7 @@ async def test_project(dut):
         squares = []
         while True:
             dst = await find_victim()
+            # cocotb.pass_test()
             assert not (dst & 128)
             if dst & 64:
                 break
@@ -291,23 +287,25 @@ async def test_project(dut):
                 squares.append(dst)
                 await disable_aggressor(src)
             await enable_friendly()
+
         return squares
 
     dut._log.info("Start")
 
-    clock = Clock(dut.clk_PAD, 20, unit="ns")
+    clock = Clock(dut.clk60, 2)
     cocotb.start_soon(clock.start())
 
     if gl:
         dut.VDD.value = 1
         dut.VSS.value = 0
 
-    dut.rst_n_PAD.value = 0
-    set_packed_field(dut.bidir_PAD, {TCK: 0, TMS: 0, TDI: 0})
-    await ClockCycles(dut.clk_PAD, 2)
-    dut.rst_n_PAD.value = 1
-    await ClockCycles(dut.clk_PAD, 1+8)
-    
+    dut.rst_ext_n.value = 0
+    dut.bidir_in.value = 0
+    dut.bidir_out.value = 0
+    await ClockCycles(dut.clk60, 2)
+    dut.rst_ext_n.value = 1
+    await ClockCycles(dut.clk60, 10)
+
     # hold TMS high for five TCKs to reset TAP
     for _ in range(5):
         await jtag_tck(tms=1)
@@ -317,7 +315,7 @@ async def test_project(dut):
 
     await transfer_jtag_ir(0xFE) # IDCODE
     idcode = (await transfer_jtag_dr(0x00, cycles=32))
-    assert idcode == 0x1392001d, idcode
+    assert idcode == 0x1392001d, hex(idcode)
 
     dut._log.info("king on empty board")
 
@@ -494,8 +492,8 @@ def chip_top_runner():
     proj_path = Path(__file__).resolve().parent
 
     sources = []
-    defines = {f"SLOT_{slot.upper()}": True}
-    includes = [proj_path / "../src/"]
+    defines = {}
+    includes = []
 
     if gl:
         # SCL models
@@ -507,7 +505,6 @@ def chip_top_runner():
 
         defines = {"FUNCTIONAL": True, "USE_POWER_PINS": True}
     else:
-        sources.append(proj_path / "../src/chip_top.sv")
         sources.append(proj_path / "../src/chip_core.sv")
         sources.append(proj_path / "../src/arb.sv")
         sources.append(proj_path / "../src/board.sv")
@@ -517,16 +514,6 @@ def chip_top_runner():
 
         includes.append(proj_path / "../src")
 
-    sources += [
-        # IO pad models
-        Path(pdk_root) / pdk / "libs.ref/gf180mcu_fd_io/verilog/gf180mcu_fd_io.v",
-        Path(pdk_root) / pdk / "libs.ref/gf180mcu_fd_io/verilog/gf180mcu_ws_io.v",
-        
-        # Custom IP
-        proj_path / "../ip/gf180mcu_ws_ip__id/vh/gf180mcu_ws_ip__id.v",
-        proj_path / "../ip/gf180mcu_ws_ip__logo/vh/gf180mcu_ws_ip__logo.v",
-    ]
-
     build_args = []
 
     if sim == "icarus":
@@ -535,7 +522,7 @@ def chip_top_runner():
         pass
 
     if sim == "verilator":
-        build_args = ["--timing", "--trace", "--trace-fst", "--trace-structs"]
+        build_args = ["--timing", "--trace", "--trace-fst", "--trace-structs", "--x-initial-edge"]
 
     runner = get_runner(sim)
     runner.build(
@@ -552,7 +539,7 @@ def chip_top_runner():
 
     runner.test(
         hdl_toplevel=hdl_toplevel,
-        test_module="chip_top_tb,",
+        test_module="chip_core_tb,",
         plusargs=plusargs,
         waves=True,
     )

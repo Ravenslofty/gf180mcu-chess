@@ -17,17 +17,34 @@ meta:
 
     # Save time during development
     # Enable for sign-off
-    #OpenROAD.IRDropReport: null
-    #Magic.DRC: null
-    #Checker.MagicDRC: null
-    #KLayout.XOR: null
-    #Netgen.LVS: null
-    #Checker.LVS: null
+    # OpenROAD.IRDropReport: null
+    # Magic.DRC: null
+    # Checker.MagicDRC: null
+    # KLayout.XOR: null
+    # Netgen.LVS: null
+    # Checker.LVS: null
+
+    "+OpenROAD.DetailedRouting": "Odb.InsertECOBuffers"
+    "+Odb.InsertECOBuffers": "OpenROAD.DetailedRouting"
+
+INSERT_ECO_BUFFERS:
+- target: hold25077/Z
+  buffer: gf180mcu_fd_sc_mcu9t5v0__dlyc_1
+
+#PL_MAX_DISPLACEMENT_X: 100000
+#PL_MAX_DISPLACEMENT_Y: 100000
 
 DESIGN_NAME: chip_top
 VERILOG_FILES:
 - dir::../src/chip_top.sv
 - dir::../src/chip_core.sv
+- dir::../src/arb.sv
+- dir::../src/board.sv
+- dir::../src/square.sv
+- dir::../src/usb.v
+- dir::../src/jtag.sv
+
+SYNTH_STRATEGY: "DELAY 4"
 
 # Enable plugin for better SystemVerilog support
 # USE_SLANG: True
@@ -57,20 +74,34 @@ IGNORE_DISCONNECTED_MODULES:
 # Clock
 CLOCK_PORT: clk_PAD
 CLOCK_NET: clk_pad/Y
-CLOCK_PERIOD: 40 # 25 MHz
+CLOCK_PERIOD: 16.6 # 60 MHz
 
 # Fix hold violations
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
-GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.42
+GRT_RESIZER_HOLD_SLACK_MARGIN: 0.21
+PL_RESIZER_SETUP_MAX_BUFFER_PCT: 100
+GRT_RESIZER_SETUP_MAX_BUFFER_PCT: 100
+PL_RESIZER_HOLD_MAX_BUFFER_PCT: 100
+GRT_RESIZER_HOLD_MAX_BUFFER_PCT: 100
 
 # Increase for more logic
 # on your die
-PL_TARGET_DENSITY_PCT: 35
+PL_TARGET_DENSITY_PCT: 40
 GRT_ALLOW_CONGESTION: true
+# GPL_CELL_PADDING: 4
+SYNTH_AUTONAME: true
 
 # Fix antenna violations after DRT
 DRT_ANTENNA_REPAIR_ITERS: 10
 DRT_ANTENNA_MARGIN: 10 # %
+# PL_RESIZER_SETUP_MAX_BUFFER_PCT: 100
+# PL_RESIZER_HOLD_MAX_BUFFER_PCT: 100
+# PL_RESIZER_SETUP_SLACK_MARGIN: 20.0
+# Force use of chonky bois to reduce clock skew (default list is 2, 4, 8)
+#CTS_CLK_BUFFERS:
+#  - "gf180mcu_fd_sc_mcu9t5v0__clkbuf_16"
+STD_CELL_LIBRARY: gf180mcu_fd_sc_mcu9t5v0
+
 
 # PDN - Straps
 PDN_VWIDTH: 5
@@ -92,8 +123,8 @@ PDN_CORE_HORIZONTAL_LAYER: Metal3
 
 # Due to OpenROAD bug
 # https://github.com/The-OpenROAD-Project/OpenROAD/issues/8229
-#PL_TIME_DRIVEN: False
-#PL_ROUTABILITY_DRIVEN: False
+#PL_TIMING_DRIVEN: True
+#PL_ROUTABILITY_DRIVEN: True
 
 # Do not error on magic DRC violations
 # Note: Passing magic DRC is not required for the submission.
@@ -173,35 +204,6 @@ MACROS:
       wafer_space_logo:
         location: ["expr::$DIE_AREA[2] + -169.25", "expr::$DIE_AREA[3] + -169.25"]
         orientation: N
-
-  gf180mcu_fd_ip_sram__sram512x8m8wm1:
-    gds:
-      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram512x8m8wm1.gds
-    lef:
-      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lef/gf180mcu_fd_ip_sram__sram512x8m8wm1.lef
-    vh:
-      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/verilog/gf180mcu_fd_ip_sram__sram512x8m8wm1__blackbox.v
-    lib:
-      "*_tt_025C_5v00":
-        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__tt_025C_5v00.lib
-      "*_ff_n40C_5v50":
-        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ff_n40C_5v50.lib
-      "*_ss_125C_4v50":
-        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ss_125C_4v50.lib
-    instances:
-      # Make sure to specify the SRAMs in pdn_cfg.tcl
-      i_chip_core.sram_0:
-        location: [490, 500]
-        orientation: N
-      i_chip_core.sram_1:
-        location: [970, 500]
-        orientation: E
-
-# This is an alternative method compared to
-# specifying the power connections in the RTL
-PDN_MACRO_CONNECTIONS:
-- "i_chip_core.sram_0 VDD VSS VDD VSS"
-- "i_chip_core.sram_1 VDD VSS VDD VSS"
 
 # Halo size around macros while cutting rows.
 # Workaround for: https://github.com/The-OpenROAD-Project/OpenROAD/issues/8868

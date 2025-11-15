@@ -109,3 +109,5 @@ PAD_WEST: [
     "inputs\\[1\\].pad",
     "inputs\\[0\\].pad"
 ]
+
+STD_CELL_LIBRARY: gf180mcu_fd_sc_mcu9t5v0
