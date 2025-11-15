@@ -177,8 +177,8 @@ module chip_top #(
         .VSS        (VSS),
         `endif
     
-        .clk        (clk_PAD2CORE),
-        .rst_n      (rst_n_PAD2CORE),
+        .clk60      (clk_PAD2CORE),
+        .rst_ext_n  (rst_n_PAD2CORE),
     
         .input_in   (input_PAD2CORE),
         .input_pu   (input_CORE2PAD_PU),

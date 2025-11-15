@@ -30,7 +30,7 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 .PHONY: help
 
-all: librelane ## Build the project (runs LibreLane)
+all: librelane-fast ## Build the project (runs LibreLane)
 .PHONY: all
 
 clone-pdk: ## Clone the GF180MCU PDK repository
@@ -41,6 +41,11 @@ clone-pdk: ## Clone the GF180MCU PDK repository
 librelane: ## Run LibreLane flow (synthesis, PnR, verification)
 	librelane librelane/slots/slot_${SLOT}.yaml librelane/config.yaml --pdk ${PDK} --pdk-root ${PDK_ROOT} --manual-pdk
 .PHONY: librelane
+
+librelane-fast: 
+	PYTHONPATH=. librelane --version
+	PYTHONPATH=. librelane librelane/config.yaml --pdk ${PDK} --pdk-root ${PDK_ROOT} --manual-pdk --skip KLayout.DRC --skip Magic.DRC --to openroad.stapostpnr
+.PHONY: librelane-fast
 
 librelane-nodrc: ## Run LibreLane flow without DRC checks
 	librelane librelane/slots/slot_${SLOT}.yaml librelane/config.yaml --pdk ${PDK} --pdk-root ${PDK_ROOT} --manual-pdk --skip KLayout.DRC --skip Magic.DRC
@@ -64,6 +69,10 @@ librelane-klayout: ## Open the last run in KLayout
 
 sim: ## Run RTL simulation with cocotb
 	cd cocotb; PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} python3 chip_top_tb.py
+.PHONY: sim
+
+sim-fast: ## Run RTL simulation with cocotb
+	cd cocotb; PDK_ROOT=${PDK_ROOT} PDK=${PDK} python3 chip_core_tb.py
 .PHONY: sim
 
 sim-gl: ## Run gate-level simulation with cocotb (after copy-final)
